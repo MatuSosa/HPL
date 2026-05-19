@@ -17,6 +17,52 @@ st.set_page_config(
 )
 
 # ============================================================
+# ESTILO AL DASHBOARD
+# ============================================================
+st.markdown("""
+<style>
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+
+    div[data-testid="stMetric"] {
+        background-color: #ffffff;
+        border: 1px solid #e5e7eb;
+        padding: 14px;
+        border-radius: 14px;
+        box-shadow: 0px 2px 8px rgba(0,0,0,0.06);
+    }
+
+    div[data-testid="stMetricLabel"] {
+        font-size: 0.85rem;
+        color: #374151;
+    }
+
+    div[data-testid="stMetricValue"] {
+        font-size: 1.7rem;
+        font-weight: 700;
+    }
+
+    .dashboard-card {
+        background-color: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: 16px;
+        box-shadow: 0px 2px 8px rgba(0,0,0,0.06);
+        margin-bottom: 12px;
+    }
+
+    .small-caption {
+        color: #6b7280;
+        font-size: 0.85rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================
 # 1. CARGA Y PREPROCESAMIENTO DEL DATASET
 # ============================================================
 
@@ -654,36 +700,112 @@ total_menciones, positivos, negativos, neutros, nsi, porcentaje_negativo = calcu
 riesgo_crisis = calcular_riesgo_crisis(total_menciones, porcentaje_negativo, nsi)
 top_topic, top_topic_count = obtener_topico_dominante(df_visualizacion)
 
-col1, col2, col3, col4, col5 = st.columns(5)
+color_map = {
+    "Positivo": "#2ecc71",
+    "Neutro": "#f1c40f",
+    "Negativo": "#e74c3c"
+}
 
-col1.metric(
-    label="Total Tweets Analizados",
-    value=total_menciones
-)
+tab_resumen, tab_engagement, tab_mapa, tab_crisis, tab_feed = st.tabs([
+    "📌 Resumen Ejecutivo",
+    "📈 Engagement y Tendencias",
+    "🌍 Mapa Global",
+    "🚨 Crisis / Oportunidades",
+    "🧾 Feed"
+])
 
-col2.metric(
-    label="Menciones Negativas",
-    value=negativos,
-    delta="+150" if "Crisis" in st.session_state.estado else None,
-    delta_color="inverse"
-)
 
-col3.metric(
-    label="Menciones Positivas",
-    value=positivos,
-    delta="+150" if "Campaña" in st.session_state.estado else None
-)
+with tab_resumen:
 
-col4.metric(
-    label="Net Sentiment Index",
-    value=f"{nsi}%",
-    delta="ALERTA CRÍTICA" if nsi < -20 else "ESTABLE"
-)
+    st.markdown("### Resumen Ejecutivo de Monitoreo")
 
-col5.metric(
-    label="Riesgo de Crisis",
-    value=riesgo_crisis
-)
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    col1.metric(
+        label="Tweets Analizados",
+        value=total_menciones
+    )
+
+    col2.metric(
+        label="Negativos",
+        value=negativos,
+        delta="+150" if "Crisis" in st.session_state.estado else None,
+        delta_color="inverse"
+    )
+
+    col3.metric(
+        label="Positivos",
+        value=positivos,
+        delta="+150" if "Campaña" in st.session_state.estado else None
+    )
+
+    col4.metric(
+        label="Net Sentiment",
+        value=f"{nsi}%",
+        delta="ALERTA" if nsi < -20 else "ESTABLE"
+    )
+
+    col5.metric(
+        label="Riesgo",
+        value=riesgo_crisis
+    )
+
+    st.markdown(
+        f"**Filtro actual:** `{aerolinea_seleccionada}` | "
+        f"**Estado:** `{st.session_state.estado}` | "
+        f"**Negatividad:** `{porcentaje_negativo}%`"
+    )
+
+    mostrar_semaforo(riesgo_crisis)
+
+    if top_topic:
+        st.warning(
+            f"Principal foco de crisis detectado: **{top_topic}** "
+            f"con **{top_topic_count} menciones negativas**."
+        )
+
+    st.markdown("---")
+
+    col_a, col_b = st.columns([1, 1])
+
+    with col_a:
+        st.write("#### Distribución de Sentimientos")
+
+        if total_menciones > 0:
+            fig_pie = px.pie(
+                df_visualizacion,
+                names="Sentiment",
+                color="Sentiment",
+                color_discrete_map = color_map,
+                hole=0.55
+            )
+
+            fig_pie.update_layout(
+                template="plotly_white",
+                height=360,
+                margin=dict(l=10, r=10, t=20, b=20),
+                legend=dict(orientation="h", y=-0.1)
+            )
+
+            st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.info("No hay datos para mostrar.")
+
+    with col_b:
+        st.write("#### Ranking de Riesgo por Aerolínea")
+
+        df_ranking = generar_ranking_aerolineas(df_actual)
+
+        if not df_ranking.empty:
+            st.dataframe(
+                df_ranking.head(8),
+                use_container_width=True,
+                hide_index=True,
+                height=360
+            )
+        else:
+            st.info("No hay datos suficientes para generar ranking.")
+
 
 st.markdown(
     f"**Filtro Actual:** Visibilidad enfocada en `{aerolinea_seleccionada}` | "
@@ -691,7 +813,6 @@ st.markdown(
     f"**Negatividad:** `{porcentaje_negativo}%`"
 )
 
-mostrar_semaforo(riesgo_crisis)
 
 if top_topic:
     st.warning(
@@ -701,437 +822,322 @@ if top_topic:
 
 st.markdown("---")
 
+with tab_engagement:
 
-# ============================================================
-# 8. GRÁFICOS PRINCIPALES
-# ============================================================
+    col_g1, col_g2 = st.columns(2)
 
-color_map = {
-    "Positivo": "#2ecc71",
-    "Neutro": "#f1c40f",
-    "Negativo": "#e74c3c"
-}
+    with col_g1:
+        st.write("### Tópicos Críticos o Motivos de Quejas")
 
-col_graph1, col_graph2 = st.columns(2)
+        df_topics = df_visualizacion[df_visualizacion['Topic'] != 'General / Other']
 
-with col_graph1:
-    st.write("### Distribución de Sentimientos")
+        if not df_topics.empty:
+            fig_bar = px.bar(
+                df_topics,
+                y="Topic",
+                color="Sentiment",
+                color_discrete_map=color_map,
+                barmode="stack",
+                orientation='h'
+            )
 
-    if total_menciones > 0:
-        fig_pie = px.pie(
-            df_visualizacion,
-            names="Sentiment",
-            color="Sentiment",
-            color_discrete_map=color_map,
-            hole=0.4
+            fig_bar.update_layout(
+                template="plotly_white",
+                height=430,
+                margin=dict(l=10, r=10, t=20, b=20),
+                yaxis={'categoryorder': 'total ascending'},
+                xaxis_title="Cantidad de Tweets"
+            )
+
+            st.plotly_chart(fig_bar, use_container_width=True)
+        else:
+            st.info("Sin anomalías específicas reportadas.")
+
+    with col_g2:
+        st.write("### Evolución Temporal del Sentimiento")
+
+        if not df_visualizacion.empty and "Fecha" in df_visualizacion.columns:
+            df_tiempo = df_visualizacion.copy()
+            df_tiempo["Fecha"] = pd.to_datetime(df_tiempo["Fecha"], errors="coerce")
+            df_tiempo = df_tiempo.dropna(subset=["Fecha"])
+
+            if not df_tiempo.empty:
+                df_tiempo = df_tiempo.groupby([
+                    pd.Grouper(key="Fecha", freq="H"),
+                    "Sentiment"
+                ]).size().reset_index(name="Cantidad")
+
+                fig_time = px.line(
+                    df_tiempo,
+                    x="Fecha",
+                    y="Cantidad",
+                    color="Sentiment",
+                    color_discrete_map=color_map,
+                    markers=True
+                )
+
+                fig_time.update_layout(
+                    template="plotly_white",
+                    height=430,
+                    margin=dict(l=10, r=10, t=20, b=20),
+                    xaxis_title="Tiempo simulado",
+                    yaxis_title="Cantidad"
+                )
+
+                st.plotly_chart(fig_time, use_container_width=True)
+            else:
+                st.info("No hay fechas válidas.")
+        else:
+            st.info("No hay datos suficientes.")
+
+with tab_mapa:
+
+    if modo_dashboard == "crisis":
+        st.write("###  Problemas Globales")
+        sentimiento_mapa = "Negativo"
+        texto_cantidad = "Cantidad de menciones negativas"
+    elif modo_dashboard == "campaña":
+        st.write("###  Oportunidades Globales")
+        sentimiento_mapa = "Positivo"
+        texto_cantidad = "Cantidad de menciones positivas"
+    else:
+        st.write("###  Monitoreo Global")
+        sentimiento_mapa = None
+        texto_cantidad = "Cantidad de menciones"
+
+    st.caption(
+        "Nota metodológica: las ubicaciones son simuladas a partir de hubs principales de aerolíneas "
+        "y puntos internacionales agregados para representar monitoreo global. "
+        "El dataset original no incluye geolocalización real de los tweets."
+    )
+
+    if sentimiento_mapa:
+        df_mapa = df_visualizacion[
+            (df_visualizacion["Sentiment"] == sentimiento_mapa) &
+            (df_visualizacion["Latitud"].notna()) &
+            (df_visualizacion["Longitud"].notna())
+        ].copy()
+    else:
+        df_mapa = df_visualizacion[
+            (df_visualizacion["Latitud"].notna()) &
+            (df_visualizacion["Longitud"].notna())
+        ].copy()
+
+    if not df_mapa.empty:
+
+        df_mapa_agg = df_mapa.groupby(
+            ["Airline", "Ciudad", "Aeropuerto", "Region", "Latitud", "Longitud", "Sentiment"]
+        ).size().reset_index(name="Cantidad")
+
+        color_mapa = "Region" if sentimiento_mapa else "Sentiment"
+
+        fig_mapa = px.scatter_mapbox(
+            df_mapa_agg,
+            lat="Latitud",
+            lon="Longitud",
+            size="Cantidad",
+            color=color_mapa,
+            hover_name="Airline",
+            hover_data={
+                "Ciudad": True,
+                "Aeropuerto": True,
+                "Region": True,
+                "Sentiment": True,
+                "Cantidad": True,
+                "Latitud": False,
+                "Longitud": False
+            },
+            zoom=1,
+            height=590,
+            size_max=55,
+            title=texto_cantidad
         )
 
-        fig_pie.update_layout(
+        fig_mapa.update_layout(
+            mapbox_style="carto-darkmatter",
             template="plotly_dark",
-            margin=dict(l=20, r=20, t=20, b=20)
+            margin=dict(l=5, r=5, t=40, b=5),
+            mapbox=dict(
+                center=dict(lat=10, lon=10),
+                zoom=1.05
+            ),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=0.01,
+                xanchor="left",
+                x=0.01
+            )
         )
 
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_mapa, use_container_width=True)
 
     else:
-        st.info("No hay datos para mostrar con el filtro actual.")
+        st.info("No hay menciones con ubicación disponible para mostrar en el mapa.")
 
+with tab_crisis:
 
-with col_graph2:
-    st.write("### Tópicos Críticos o Motivos de Quejas")
-
-    df_topics = df_visualizacion[df_visualizacion['Topic'] != 'General / Other']
-
-    if not df_topics.empty:
-        fig_bar = px.bar(
-            df_topics,
-            y="Topic",
-            color="Sentiment",
-            color_discrete_map=color_map,
-            barmode="stack",
-            orientation='h'
-        )
-
-        fig_bar.update_layout(
-            template="plotly_dark",
-            margin=dict(l=20, r=20, t=20, b=20),
-            yaxis={'categoryorder': 'total ascending'},
-            xaxis_title="Cantidad de Tweets"
-        )
-
-        st.plotly_chart(fig_bar, use_container_width=True)
-
+    if modo_dashboard == "crisis":
+        sentimiento_nube = "Negativo"
+        titulo_nube = "Menciones Negativas"
+    elif modo_dashboard == "campaña":
+        sentimiento_nube = "Positivo"
+        titulo_nube = "Menciones Positivas"
     else:
-        st.info("Sin anomalías específicas reportadas en esta selección.")
+        sentimiento_nube = "Negativo"
+        titulo_nube = "Menciones Negativas"
 
+    col_nube, col_ranking = st.columns([1.2, 1])
 
-# ============================================================
-# 9. EVOLUCIÓN TEMPORAL SIMULADA
-# ============================================================
+    with col_nube:
+        st.write(f"### {titulo_nube}")
 
-st.markdown("---")
-st.write("### Evolución Temporal del Sentimiento")
-
-if not df_visualizacion.empty and "Fecha" in df_visualizacion.columns:
-    df_tiempo = df_visualizacion.copy()
-    df_tiempo["Fecha"] = pd.to_datetime(df_tiempo["Fecha"], errors="coerce")
-    df_tiempo = df_tiempo.dropna(subset=["Fecha"])
-
-    if not df_tiempo.empty:
-        df_tiempo = df_tiempo.groupby([
-            pd.Grouper(key="Fecha", freq="H"),
-            "Sentiment"
-        ]).size().reset_index(name="Cantidad")
-
-        fig_time = px.line(
-            df_tiempo,
-            x="Fecha",
-            y="Cantidad",
-            color="Sentiment",
-            color_discrete_map=color_map,
-            markers=True
+        textos_nube = " ".join(
+            df_visualizacion[df_visualizacion["Sentiment"] == sentimiento_nube]["Text"].astype(str)
         )
 
-        fig_time.update_layout(
-            template="plotly_dark",
-            xaxis_title="Tiempo simulado",
-            yaxis_title="Cantidad de menciones"
+        stopwords_wordcloud = {
+            "the", "and", "for", "you", "your", "are", "was", "were", "with",
+            "this", "that", "have", "has", "had", "from", "they", "them",
+            "then", "than", "there", "their", "will", "would", "could", "should",
+            "can", "cant", "can't", "dont", "don't", "did", "didnt", "didn't",
+            "not", "but", "all", "our", "out", "get", "got", "now", "why",
+            "how", "too", "just", "what", "when", "where", "about", "because",
+            "been", "again", "very", "more", "only", "any", "yes", "amp",
+            "to", "of", "in", "on", "at", "it", "is", "be", "or", "if",
+            "so", "my", "me", "we", "us", "up", "by", "an", "as",
+            "http", "https", "co", "rt",
+            "flight", "flights", "airline", "airlines", "plane",
+            "united", "unitedairlines", "usairways", "americanair",
+            "southwestair", "jetblue", "virginamerica", "delta", "southwest",
+            "im", "i'm", "ive", "i've"
+        }
+
+        if textos_nube.strip():
+            wordcloud = WordCloud(
+                width=900,
+                height=360,
+                background_color="#111111",
+                colormap="Greens" if sentimiento_nube == "Positivo" else "Reds",
+                stopwords=stopwords_wordcloud,
+                max_words=70,
+                min_word_length=4,
+                collocations=False
+            ).generate(textos_nube)
+
+            fig, ax = plt.subplots(figsize=(10, 4))
+            ax.imshow(wordcloud, interpolation="bilinear")
+            ax.axis("off")
+
+            st.pyplot(fig)
+        else:
+            st.info("No hay suficientes menciones para generar la nube.")
+
+    with col_ranking:
+        st.write(f"### Términos Frecuentes - {sentimiento_nube}")
+
+        df_palabras = generar_terminos_frecuentes(df_visualizacion, sentimiento_nube)
+
+        if not df_palabras.empty:
+            fig_words = px.bar(
+                df_palabras,
+                x="Frecuencia",
+                y="Palabra",
+                orientation="h"
+            )
+
+            fig_words.update_layout(
+                template="plotly_white",
+                height=360,
+                margin=dict(l=10, r=10, t=20, b=20),
+                yaxis={'categoryorder': 'total ascending'},
+                xaxis_title="Frecuencia",
+                yaxis_title=""
+            )
+
+            st.plotly_chart(fig_words, use_container_width=True)
+        else:
+            st.info("No hay términos suficientes.")
+
+    st.markdown("---")
+
+    col_rec, col_tablas = st.columns([1, 1.3])
+
+    with col_rec:
+        mostrar_recomendacion_dinamica(
+            modo_dashboard,
+            riesgo_crisis,
+            top_topic,
+            positivos,
+            negativos,
+            total_menciones
         )
 
-        st.plotly_chart(fig_time, use_container_width=True)
+    with col_tablas:
+        if modo_dashboard == "campaña":
+            st.info("Modo campaña activo: se priorizan oportunidades positivas.")
+        elif modo_dashboard == "crisis":
+            st.warning("Modo crisis activo: se priorizan reclamos negativos.")
 
+        st.write("#### Casos Prioritarios")
+
+        df_prioritarios = df_visualizacion[
+            (df_visualizacion["Sentiment"] == "Negativo") &
+            (df_visualizacion["Topic"] != "General / Other")
+        ][["Airline", "User", "Text", "Topic", "Fecha"]].copy()
+
+        df_prioritarios = df_prioritarios.sort_values("Fecha", ascending=False).head(5)
+
+        if not df_prioritarios.empty:
+            st.dataframe(
+                df_prioritarios,
+                use_container_width=True,
+                hide_index=True,
+                height=210
+            )
+        else:
+            st.success("No hay casos críticos pendientes.")
+
+        st.write("#### Oportunidades de Fidelización")
+
+        df_oportunidades = df_visualizacion[
+            df_visualizacion["Sentiment"] == "Positivo"
+        ][["Airline", "User", "Text", "Sentiment", "Fecha"]].copy()
+
+        df_oportunidades = df_oportunidades.sort_values("Fecha", ascending=False).head(5)
+
+        if not df_oportunidades.empty:
+            st.dataframe(
+                df_oportunidades,
+                use_container_width=True,
+                hide_index=True,
+                height=210
+            )
+        else:
+            st.info("No se detectaron oportunidades positivas.")
+
+with tab_feed:
+
+    st.write("### Feed de Ingesta Directa - Clasificación en Tiempo Real")
+    st.markdown("Output del pipeline de PLN con clasificación automática de sentimiento y tópico.")
+
+    if not df_visualizacion.empty:
+        df_mostrar = df_visualizacion[
+            ['Airline', 'User', 'Text', 'Sentiment', 'Topic', 'Fecha']
+        ].copy()
+
+        df_mostrar = df_mostrar.sort_values("Fecha", ascending=False)
+
+        styled_df = df_mostrar.style.map(
+            color_sentiment_row,
+            subset=['Sentiment']
+        )
+
+        st.dataframe(
+            styled_df,
+            use_container_width=True,
+            hide_index=True,
+            height=620
+        )
     else:
-        st.info("No hay fechas válidas para construir la evolución temporal.")
-else:
-    st.info("No hay datos suficientes para mostrar evolución temporal.")
-
-
-# ============================================================
-# 9 BIS. MAPA DE BURBUJAS - CONCENTRACIÓN GLOBAL DINÁMICA
-# ============================================================
-
-st.markdown("---")
-
-if modo_dashboard == "crisis":
-    st.write("### Concentración Global de Problemas")
-    sentimiento_mapa = "Negativo"
-    texto_cantidad = "Cantidad de menciones negativas"
-elif modo_dashboard == "campaña":
-    st.write("### Concentración Global de Oportunidades")
-    sentimiento_mapa = "Positivo"
-    texto_cantidad = "Cantidad de menciones positivas"
-else:
-    st.write("### Monitoreo Global de Menciones")
-    sentimiento_mapa = None
-    texto_cantidad = "Cantidad de menciones"
-
-st.caption(
-    "Nota metodológica: las ubicaciones son simuladas a partir de hubs principales de aerolíneas "
-    "y puntos internacionales agregados para representar monitoreo global. "
-    "El dataset original no incluye geolocalización real de los tweets."
-)
-
-
-
-if sentimiento_mapa:
-    df_mapa = df_visualizacion[
-        (df_visualizacion["Sentiment"] == sentimiento_mapa) &
-        (df_visualizacion["Latitud"].notna()) &
-        (df_visualizacion["Longitud"].notna())
-    ].copy()
-else:
-    df_mapa = df_visualizacion[
-        (df_visualizacion["Latitud"].notna()) &
-        (df_visualizacion["Longitud"].notna())
-    ].copy()
-
-if not df_mapa.empty:
-
-    df_mapa_agg = df_mapa.groupby(
-        ["Airline", "Ciudad", "Aeropuerto", "Region", "Latitud", "Longitud", "Sentiment"]
-    ).size().reset_index(name="Cantidad")
-
-    color_mapa = "Region" if sentimiento_mapa else "Sentiment"
-
-    fig_mapa = px.scatter_mapbox(
-        df_mapa_agg,
-        lat="Latitud",
-        lon="Longitud",
-        size="Cantidad",
-        color=color_mapa,
-        hover_name="Airline",
-        hover_data={
-            "Ciudad": True,
-            "Aeropuerto": True,
-            "Region": True,
-            "Sentiment": True,
-            "Cantidad": True,
-            "Latitud": False,
-            "Longitud": False
-        },
-        zoom=1,
-        height=780,
-        size_max=60,
-        title=texto_cantidad
-    )
-
-    fig_mapa.update_layout(
-        mapbox_style="carto-darkmatter",
-        template="plotly_dark",
-        margin=dict(l=10, r=10, t=50, b=10),
-        mapbox=dict(
-            center=dict(lat=10, lon=10),
-            zoom=1.15
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=0.01,
-            xanchor="left",
-            x=0.01
-        )
-    )
-
-    st.plotly_chart(fig_mapa, use_container_width=True)
-
-else:
-    st.info("No hay menciones con ubicación disponible para mostrar en el mapa.")
-
-
-# ============================================================
-# 10. RANKING DE AEROLÍNEAS
-# ============================================================
-
-st.markdown("---")
-st.write("### Ranking de Riesgo por Aerolínea")
-
-df_ranking = generar_ranking_aerolineas(df_actual)
-
-if not df_ranking.empty:
-    st.dataframe(
-        df_ranking,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    fig_ranking = px.bar(
-        df_ranking,
-        x="Airline",
-        y="% Negativo",
-        color="% Negativo",
-        title="Porcentaje de menciones negativas por aerolínea"
-    )
-
-    fig_ranking.update_layout(
-        template="plotly_dark",
-        xaxis_title="Aerolínea",
-        yaxis_title="% de menciones negativas"
-    )
-
-    st.plotly_chart(fig_ranking, use_container_width=True)
-
-else:
-    st.info("No hay datos suficientes para generar el ranking.")
-
-
-st.markdown("---")
-
-if modo_dashboard == "crisis":
-    sentimiento_nube = "Negativo"
-    titulo_nube = "### Nube de Palabras en Menciones Negativas"
-elif modo_dashboard == "campaña":
-    sentimiento_nube = "Positivo"
-    titulo_nube = "### Nube de Palabras en Menciones Positivas"
-else:
-    sentimiento_nube = "Negativo"
-    titulo_nube = "### Nube de Palabras en Menciones Negativas"
-
-st.write(titulo_nube)
-
-textos_nube = " ".join(
-    df_visualizacion[df_visualizacion["Sentiment"] == sentimiento_nube]["Text"].astype(str)
-)
-
-stopwords_wordcloud = {
-    # Palabras vacías generales en inglés
-    "the", "and", "for", "you", "your", "are", "was", "were", "with",
-    "this", "that", "have", "has", "had", "from", "they", "them",
-    "then", "than", "there", "their", "will", "would", "could", "should",
-    "can", "cant", "can't", "dont", "don't", "did", "didnt", "didn't",
-    "not", "but", "all", "our", "out", "get", "got", "now", "why",
-    "how", "too", "just", "what", "when", "where", "about", "because",
-    "been", "again", "very", "more", "only", "any", "yes", "amp",
-
-    # Pronombres y palabras cortas que ensucian la nube
-    "to", "of", "in", "on", "at", "it", "is", "be", "or", "if",
-    "so", "my", "me", "we", "us", "up", "by", "an", "as",
-
-    # URLs y ruido de Twitter
-    "http", "https", "co", "rt",
-
-    # Términos demasiado generales del dominio
-    "flight", "flights", "airline", "airlines", "plane",
-
-    # Nombres de aerolíneas / usuarios de Twitter
-    "united", "unitedairlines", "usairways", "americanair",
-    "southwestair", "jetblue", "virginamerica", "delta", "southwest",
-
-    # Contracciones frecuentes
-    "im", "i'm", "ive", "i've"
-}
-
-if textos_nube.strip():
-    wordcloud = WordCloud(
-        width=1200,
-        height=500,
-        background_color="#111111",
-        colormap="Greens" if sentimiento_nube == "Positivo" else "Reds",
-        stopwords=stopwords_wordcloud,
-        max_words=80,
-        min_word_length=4,
-        collocations=False
-    ).generate(textos_nube)
-
-    fig, ax = plt.subplots(figsize=(14, 6))
-    ax.imshow(wordcloud, interpolation="bilinear")
-    ax.axis("off")
-
-    st.pyplot(fig)
-
-else:
-    st.info("No hay suficientes menciones para generar la nube de palabras.")
-
-
-st.write(f"### Ranking de Términos Frecuentes - {sentimiento_nube}")
-
-df_palabras = generar_terminos_frecuentes(df_visualizacion, sentimiento_nube)
-
-if not df_palabras.empty:
-    fig_words = px.bar(
-        df_palabras,
-        x="Frecuencia",
-        y="Palabra",
-        orientation="h"
-    )
-
-    fig_words.update_layout(
-        template="plotly_dark",
-        yaxis={'categoryorder': 'total ascending'},
-        xaxis_title="Frecuencia",
-        yaxis_title="Palabra"
-    )
-
-    st.plotly_chart(fig_words, use_container_width=True)
-
-else:
-    st.info("No hay suficientes términos negativos para analizar.")
-
-# ============================================================
-# 12. RECOMENDACIÓN ESTRATÉGICA
-# ============================================================
-
-st.markdown("---")
-mostrar_recomendacion_dinamica(
-    modo_dashboard,
-    riesgo_crisis,
-    top_topic,
-    positivos,
-    negativos,
-    total_menciones
-)
-
-
-# ============================================================
-# 13. CASOS PRIORITARIOS PARA ATENCIÓN AL CLIENTE
-# ============================================================
-
-st.markdown("---")
-st.write("### Casos Prioritarios para Atención al Cliente")
-
-df_prioritarios = df_visualizacion[
-    (df_visualizacion["Sentiment"] == "Negativo") &
-    (df_visualizacion["Topic"] != "General / Other")
-][["Airline", "User", "Text", "Topic", "Fecha"]].copy()
-
-df_prioritarios = df_prioritarios.sort_values("Fecha", ascending=False).head(10)
-
-if not df_prioritarios.empty:
-    st.dataframe(
-        df_prioritarios,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    csv_prioritarios = df_prioritarios.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        label="Descargar reporte de casos críticos",
-        data=csv_prioritarios,
-        file_name="reporte_casos_criticos.csv",
-        mime="text/csv"
-    )
-
-else:
-    st.success("No hay casos críticos pendientes en esta selección.")
-
-
-# ============================================================
-# 14. OPORTUNIDADES DE FIDELIZACIÓN
-# ============================================================
-
-st.markdown("---")
-st.write("### Oportunidades de Fidelización")
-
-df_oportunidades = df_visualizacion[
-    df_visualizacion["Sentiment"] == "Positivo"
-][["Airline", "User", "Text", "Sentiment", "Fecha"]].copy()
-
-df_oportunidades = df_oportunidades.sort_values("Fecha", ascending=False).head(10)
-
-if not df_oportunidades.empty:
-    st.dataframe(
-        df_oportunidades,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    csv_oportunidades = df_oportunidades.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        label="Descargar oportunidades de fidelización",
-        data=csv_oportunidades,
-        file_name="oportunidades_fidelizacion.csv",
-        mime="text/csv"
-    )
-
-else:
-    st.info("No se detectaron oportunidades positivas en esta selección.")
-
-
-# ============================================================
-# 15. FEED GENERAL DE INGESTA DIRECTA
-# ============================================================
-
-st.markdown("---")
-st.write("### Feed de Ingesta Directa - Clasificación en Tiempo Real")
-st.markdown("Output del pipeline de PLN con clasificación automática de sentimiento y tópico.")
-
-if not df_visualizacion.empty:
-    df_mostrar = df_visualizacion[
-        ['Airline', 'User', 'Text', 'Sentiment', 'Topic', 'Fecha']
-    ].copy()
-
-    df_mostrar = df_mostrar.sort_values("Fecha", ascending=False)
-
-    styled_df = df_mostrar.style.map(
-        color_sentiment_row,
-        subset=['Sentiment']
-    )
-
-    st.dataframe(
-        styled_df,
-        use_container_width=True,
-        hide_index=True
-    )
-else:
-    st.info("No hay tweets para mostrar con el filtro actual.")
+        st.info("No hay tweets para mostrar con el filtro actual.")
